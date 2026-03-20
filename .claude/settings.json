@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/tianyizhang/Desktop/Coding/aiphalab/**)",
+      "Bash(find /Users/tianyizhang/Desktop/Coding/aiphalab/node_modules/@anthropic-ai -type f -name *.d.ts)",
+      "Bash(pnpm create:*)",
+      "Bash(yes \"\")",
+      "Bash(cp -r /tmp/personal_admin_scaffold/* /Users/tianyizhang/Desktop/Coding/personal_admin/)",
+      "Bash(cp /tmp/personal_admin_scaffold/.gitignore /Users/tianyizhang/Desktop/Coding/personal_admin/)",
+      "Bash(cp /tmp/personal_admin_scaffold/.eslintrc* /Users/tianyizhang/Desktop/Coding/personal_admin/)",
+      "Bash(cp -r /tmp/personal_admin_scaffold/.next /Users/tianyizhang/Desktop/Coding/personal_admin/)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm build:*)",
+      "Bash(find /Users/tianyizhang/Desktop/Coding/personal_admin -type f -name *.tsx -o -name *.ts -o -name *.json -o -name *.sql -o -name .env*)"
+    ],
+    "additionalDirectories": [
+      "/Users/tianyizhang/Desktop/Coding/personal_admin/app/api/channels/[id]"
+    ]
+  }
+}
