@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { useMessages } from "@/hooks/useMessages";
 import { useChat } from "@/hooks/useChat";
 import { useScrollToBottom } from "@/hooks/useScrollToBottom";
@@ -38,6 +38,9 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
     Record<string, string>
   >({});
 
+  // Skip fade-in animation for messages promoted from streaming state
+  const skipAnimationIds = useRef(new Set<string>());
+
   // Reset selected choices when channel changes
   useEffect(() => {
     setSelectedChoices({});
@@ -61,9 +64,12 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
       const result = await sendMessage(content);
 
       if (result) {
-        // Add persisted assistant message, then clear streaming
+        // Promote streaming message to persisted message without flash
+        const assistantId = `assistant-${Date.now()}`;
+        skipAnimationIds.current.add(assistantId);
+
         const assistantMsg: Message = {
-          id: `assistant-${Date.now()}`,
+          id: assistantId,
           channel_id: channelId,
           user_id: "",
           role: "assistant",
@@ -71,9 +77,18 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
           choices: result.choices ?? null,
           created_at: new Date().toISOString(),
         };
+
+        // React 19 batches these into a single render
         addMessage(assistantMsg);
+        clearStreaming();
+
+        // Clean up after render
+        requestAnimationFrame(() => {
+          skipAnimationIds.current.delete(assistantId);
+        });
+      } else {
+        clearStreaming();
       }
-      clearStreaming();
     },
     [channelId, addMessage, sendMessage, clearStreaming, scrollToBottom]
   );
@@ -151,6 +166,7 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
                 isLatestAssistant={
                   msg.id === latestAssistantId && !isStreaming
                 }
+                skipAnimation={skipAnimationIds.current.has(msg.id)}
               />
             ))}
 

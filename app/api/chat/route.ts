@@ -1,26 +1,15 @@
 import { ChatDB } from "@/lib/db/repository";
-import { generateStream, generateStructuredWithRetry } from "@/lib/llm";
-import { buildChannelSystemPrompt } from "@/lib/prompts";
+import { generateStream } from "@/lib/llm";
+import { buildChannelSystemPrompt, parseChoicesFromResponse } from "@/lib/prompts";
 import { summarizeMessages } from "@/lib/memory";
 import {
   RECENT_MESSAGE_COUNT,
   SUMMARY_TRIGGER_THRESHOLD,
 } from "@/lib/constants";
-import type { Choice } from "@/lib/types";
-import { z } from "zod/v4";
+
 import { getRequiredSession } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
-
-const ChoicesSchema = z.object({
-  choices: z.array(
-    z.object({
-      label: z.string(),
-      value: z.string(),
-      description: z.string().optional(),
-    })
-  ),
-});
 
 export async function POST(req: Request) {
   const session = await getRequiredSession();
@@ -98,28 +87,18 @@ export async function POST(req: Request) {
             }
           }
 
-          // Signal that text streaming is done (cursor can hide)
+          // Parse inline choices from the response
+          const { cleanText, choices } = parseChoicesFromResponse(fullText);
+
+          // Signal that text streaming is done, with clean text (choices block stripped)
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: "text_done" })}\n\n`
+              `data: ${JSON.stringify({ type: "text_done", finalText: cleanText })}\n\n`
             )
           );
 
-          // Extract choices from the completed response
-          let choices: Choice[] | undefined;
-          try {
-            const result = await generateStructuredWithRetry(
-              `Given this AI assistant response, extract 2-6 relevant next-step choices the user could pick. Each choice should be a natural continuation of the conversation. If the response is purely informational with no clear next steps, return an empty choices array. Always include a "Something else" option.\n\nAI Response:\n${fullText}`,
-              ChoicesSchema,
-              0.1
-            );
-            choices = result.choices.length > 0 ? result.choices : undefined;
-          } catch {
-            // No choices is fine
-          }
-
           // Save assistant message to DB
-          await db.createMessage(channelId, userId, "assistant", fullText, choices);
+          await db.createMessage(channelId, userId, "assistant", cleanText, choices);
 
           // Send choices event
           if (choices?.length) {

@@ -10,6 +10,7 @@ interface MessageBubbleProps {
   onChoiceSelect?: (choice: Choice) => void;
   selectedChoice?: string | null;
   isLatestAssistant?: boolean;
+  skipAnimation?: boolean;
 }
 
 export default function MessageBubble({
@@ -17,12 +18,13 @@ export default function MessageBubble({
   onChoiceSelect,
   selectedChoice,
   isLatestAssistant,
+  skipAnimation,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
     <div
-      className={`flex ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}
+      className={`flex ${isUser ? "justify-end" : "justify-start"} ${skipAnimation ? "" : "animate-fade-in"}`}
     >
       <div
         className={`max-w-[75%] ${isUser ? "min-w-[48px]" : "min-w-[64px]"}`}

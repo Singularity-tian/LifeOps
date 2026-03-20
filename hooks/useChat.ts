@@ -61,6 +61,10 @@ export function useChat(channelId: string | null) {
                   setStreamingText(finalText);
                   break;
                 case "text_done":
+                  if (data.finalText) {
+                    finalText = data.finalText;
+                    setStreamingText(data.finalText);
+                  }
                   setIsStreaming(false);
                   break;
                 case "choices":
