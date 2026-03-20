@@ -13,7 +13,10 @@
       "Bash(pnpm approve-builds:*)",
       "Bash(pnpm typecheck:*)",
       "Bash(pnpm build:*)",
-      "Bash(find /Users/tianyizhang/Desktop/Coding/personal_admin -type f -name *.tsx -o -name *.ts -o -name *.json -o -name *.sql -o -name .env*)"
+      "Bash(find /Users/tianyizhang/Desktop/Coding/personal_admin -type f -name *.tsx -o -name *.ts -o -name *.json -o -name *.sql -o -name .env*)",
+      "Bash(ls -la /Users/tianyizhang/Desktop/Coding/LifeOps/tailwind*)",
+      "Bash(find /Users/tianyizhang/Desktop/Coding/LifeOps/node_modules/.pnpm -path *@anthropic-ai+sdk* -name messages.d.ts -not -path */node_modules/@anthropic-ai/sdk/node_modules/*)",
+      "Bash(grep -r \"web_search\\\\|WebSearchTool\\\\|server_tool_use\\\\|ServerToolUse\" /Users/tianyizhang/Desktop/Coding/LifeOps/node_modules/.pnpm/@anthropic-ai+sdk@0.80.0_zod@4.3.6/node_modules/@anthropic-ai/sdk/resources/ --include=*.d.ts -l)"
     ],
     "additionalDirectories": [
       "/Users/tianyizhang/Desktop/Coding/personal_admin/app/api/channels/[id]"

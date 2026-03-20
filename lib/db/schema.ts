@@ -29,11 +29,17 @@ CREATE TABLE IF NOT EXISTS messages (
   role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content         TEXT NOT NULL,
   choices         JSONB,
+  tool_calls      JSONB,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel_id, created_at);
 `;
+
+// Incremental migrations for existing databases
+const MIGRATIONS = [
+  `ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_calls JSONB`,
+];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runMigration(sql: any) {
@@ -44,5 +50,11 @@ export async function runMigration(sql: any) {
   for (const stmt of statements) {
     await sql.query(stmt);
   }
+
+  // Run incremental migrations
+  for (const migration of MIGRATIONS) {
+    await sql.query(migration);
+  }
+
   console.log("Migration complete — users, channels, messages tables ready");
 }

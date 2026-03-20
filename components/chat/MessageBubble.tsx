@@ -4,6 +4,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message, Choice } from "@/lib/types";
 import ChoiceCards from "./ChoiceCards";
+import ToolUseBlock from "./ToolUseBlock";
 
 interface MessageBubbleProps {
   message: Message;
@@ -29,6 +30,19 @@ export default function MessageBubble({
       <div
         className={`max-w-[75%] ${isUser ? "min-w-[48px]" : "min-w-[64px]"}`}
       >
+        {/* Tool use blocks for assistant messages */}
+        {!isUser && message.tool_calls?.map((tc) => (
+          <ToolUseBlock
+            key={tc.id}
+            tool={{
+              id: tc.id,
+              name: tc.name,
+              status: "complete",
+              results: tc.results,
+            }}
+          />
+        ))}
+
         {/* Bubble */}
         <div
           className={`px-3.5 py-2.5 ${isUser ? "rounded-[18px] rounded-br-[6px]" : "rounded-[18px] rounded-bl-[6px]"}`}

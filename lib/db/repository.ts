@@ -1,5 +1,5 @@
 import { getDb } from "./client";
-import type { Channel, Choice, Message, User } from "../types";
+import type { Channel, Choice, Message, StoredToolCall, User } from "../types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function first(rows: any): any {
@@ -122,12 +122,14 @@ export class ChatDB {
     userId: string,
     role: "user" | "assistant",
     content: string,
-    choices?: Choice[]
+    choices?: Choice[],
+    toolCalls?: StoredToolCall[]
   ): Promise<Message> {
     const choicesJson = choices ? JSON.stringify(choices) : null;
+    const toolCallsJson = toolCalls?.length ? JSON.stringify(toolCalls) : null;
     const rows = await this.sql`
-      INSERT INTO messages (channel_id, user_id, role, content, choices)
-      VALUES (${channelId}, ${userId}, ${role}, ${content}, ${choicesJson}::jsonb)
+      INSERT INTO messages (channel_id, user_id, role, content, choices, tool_calls)
+      VALUES (${channelId}, ${userId}, ${role}, ${content}, ${choicesJson}::jsonb, ${toolCallsJson}::jsonb)
       RETURNING *
     `;
     await this.sql`

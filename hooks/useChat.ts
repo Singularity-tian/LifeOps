@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { Choice } from "@/lib/types";
+import type { Choice, ActiveToolUse, StoredToolCall } from "@/lib/types";
 
 export function useChat(channelId: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
@@ -9,10 +9,12 @@ export function useChat(channelId: string | null) {
   const [streamingChoices, setStreamingChoices] = useState<Choice[] | null>(
     null
   );
+  const [activeTools, setActiveTools] = useState<ActiveToolUse[]>([]);
 
   const clearStreaming = useCallback(() => {
     setStreamingText("");
     setStreamingChoices(null);
+    setActiveTools([]);
   }, []);
 
   const sendMessage = useCallback(
@@ -22,6 +24,7 @@ export function useChat(channelId: string | null) {
       setIsStreaming(true);
       setStreamingText("");
       setStreamingChoices(null);
+      setActiveTools([]);
 
       try {
         const response = await fetch("/api/chat", {
@@ -39,6 +42,7 @@ export function useChat(channelId: string | null) {
         let buffer = "";
         let finalText = "";
         let choices: Choice[] | null = null;
+        let toolCalls: StoredToolCall[] | null = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -71,6 +75,32 @@ export function useChat(channelId: string | null) {
                   choices = data.choices;
                   setStreamingChoices(data.choices);
                   break;
+                case "tool_use_start":
+                  setActiveTools((prev) => [
+                    ...prev,
+                    {
+                      id: data.id,
+                      name: data.name,
+                      status: "running",
+                    },
+                  ]);
+                  break;
+                case "tool_result":
+                  setActiveTools((prev) =>
+                    prev.map((t) =>
+                      t.id === data.tool_use_id
+                        ? {
+                            ...t,
+                            status: "complete" as const,
+                            results: data.results,
+                          }
+                        : t
+                    )
+                  );
+                  break;
+                case "tool_calls":
+                  toolCalls = data.toolCalls;
+                  break;
                 case "done":
                   break;
                 case "error":
@@ -84,7 +114,7 @@ export function useChat(channelId: string | null) {
           }
         }
 
-        return { text: finalText, choices };
+        return { text: finalText, choices, toolCalls };
       } catch (e) {
         console.error("Chat error:", e);
         setIsStreaming(false);
@@ -99,6 +129,7 @@ export function useChat(channelId: string | null) {
     isStreaming,
     streamingText,
     streamingChoices,
+    activeTools,
     clearStreaming,
   };
 }

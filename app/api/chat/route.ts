@@ -6,8 +6,10 @@ import {
   RECENT_MESSAGE_COUNT,
   SUMMARY_TRIGGER_THRESHOLD,
 } from "@/lib/constants";
-
 import { getRequiredSession } from "@/lib/auth-utils";
+import { getDefaultTools } from "@/lib/tools";
+import { buildApiMessages } from "@/lib/tools/history";
+import type { StoredToolCall, WebSearchResult } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -55,74 +57,166 @@ export async function POST(req: Request) {
       channel.memory_summary
     );
 
-    const apiMessages = recentMessages.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
+    const apiMessages = buildApiMessages(recentMessages);
 
-    // Stream the response in real-time, then extract choices after
+    // Stream the response in real-time
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        const sendSSE = (data: unknown) => {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+          );
+        };
+
         try {
           let fullText = "";
+          const toolCalls: StoredToolCall[] = [];
+          let currentToolUse: Partial<StoredToolCall> | null = null;
+
           const messageStream = await generateStream(
             apiMessages,
-            systemPrompt
+            systemPrompt,
+            { tools: getDefaultTools() }
           );
 
-          // Stream text deltas as they arrive
           for await (const event of messageStream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              const text = event.delta.text;
-              fullText += text;
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: "delta", text })}\n\n`
-                )
-              );
+            switch (event.type) {
+              case "content_block_start": {
+                const block = event.content_block;
+
+                // Server tool invocation (web_search, web_fetch)
+                if (block.type === "server_tool_use") {
+                  currentToolUse = {
+                    id: block.id,
+                    name: block.name,
+                    input: block.input,
+                  };
+                  sendSSE({
+                    type: "tool_use_start",
+                    name: block.name,
+                    id: block.id,
+                  });
+                }
+
+                // Web search results
+                if (block.type === "web_search_tool_result") {
+                  const results: WebSearchResult[] = Array.isArray(block.content)
+                    ? block.content
+                        .filter((r): r is { type: "web_search_result"; title: string; url: string; page_age: string | null; encrypted_content: string } =>
+                          r.type === "web_search_result"
+                        )
+                        .map((r) => ({
+                          title: r.title,
+                          url: r.url,
+                          page_age: r.page_age,
+                          encrypted_content: r.encrypted_content,
+                        }))
+                    : [];
+
+                  if (currentToolUse) {
+                    currentToolUse.results = results;
+                    toolCalls.push(currentToolUse as StoredToolCall);
+                    currentToolUse = null;
+                  }
+
+                  // Send results to frontend (without encrypted_content)
+                  sendSSE({
+                    type: "tool_result",
+                    tool_use_id: block.tool_use_id,
+                    name: "web_search",
+                    results: results.map((r) => ({
+                      title: r.title,
+                      url: r.url,
+                      page_age: r.page_age,
+                    })),
+                  });
+                }
+
+                // Web fetch results
+                if (block.type === "web_fetch_tool_result") {
+                  const fetchContent = block.content;
+                  const isError = fetchContent.type === "web_fetch_tool_result_error";
+
+                  if (currentToolUse) {
+                    if (isError) {
+                      currentToolUse.error = fetchContent.error_code;
+                    } else {
+                      currentToolUse.results = {
+                        url: fetchContent.url,
+                        page_title: fetchContent.url,
+                      };
+                    }
+                    toolCalls.push(currentToolUse as StoredToolCall);
+                    currentToolUse = null;
+                  }
+
+                  sendSSE({
+                    type: "tool_result",
+                    tool_use_id: block.tool_use_id,
+                    name: "web_fetch",
+                    results: isError
+                      ? { error: fetchContent.error_code }
+                      : { url: fetchContent.url },
+                  });
+                }
+                break;
+              }
+
+              case "content_block_delta": {
+                if (event.delta.type === "text_delta") {
+                  fullText += event.delta.text;
+                  sendSSE({ type: "delta", text: event.delta.text });
+                }
+                break;
+              }
             }
           }
 
           // Parse inline choices from the response
           const { cleanText, choices } = parseChoicesFromResponse(fullText);
 
-          // Signal that text streaming is done, with clean text (choices block stripped)
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "text_done", finalText: cleanText })}\n\n`
-            )
+          // Signal that text streaming is done
+          sendSSE({ type: "text_done", finalText: cleanText });
+
+          // Save assistant message to DB (with tool calls)
+          await db.createMessage(
+            channelId,
+            userId,
+            "assistant",
+            cleanText,
+            choices,
+            toolCalls.length > 0 ? toolCalls : undefined
           );
 
-          // Save assistant message to DB
-          await db.createMessage(channelId, userId, "assistant", cleanText, choices);
+          // Send tool_calls to frontend for persisted message
+          if (toolCalls.length > 0) {
+            // Strip encrypted_content before sending to client
+            const clientToolCalls = toolCalls.map((tc) => ({
+              ...tc,
+              results: Array.isArray(tc.results)
+                ? tc.results.map((r) => {
+                    const { encrypted_content: _, ...rest } = r as WebSearchResult;
+                    return rest;
+                  })
+                : tc.results,
+            }));
+            sendSSE({ type: "tool_calls", toolCalls: clientToolCalls });
+          }
 
           // Send choices event
           if (choices?.length) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ type: "choices", choices })}\n\n`
-              )
-            );
+            sendSSE({ type: "choices", choices });
           }
 
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
-          );
+          sendSSE({ type: "done" });
           controller.close();
 
           // Async: check if summarization is needed
           maybeTriggerSummarization(channelId, db).catch(console.error);
         } catch (e) {
           console.error("Chat stream error:", e);
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "error", message: "Stream failed" })}\n\n`
-            )
-          );
+          sendSSE({ type: "error", message: "Stream failed" });
           controller.close();
         }
       },

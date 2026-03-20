@@ -1,6 +1,12 @@
 import { AnthropicFoundry } from "@anthropic-ai/foundry-sdk";
 import { z } from "zod/v4";
 
+// Re-export SDK types via the client instance
+type Client = AnthropicFoundry;
+type StreamParams = Parameters<Client["messages"]["stream"]>[0];
+export type MessageParam = StreamParams["messages"][number];
+export type ToolUnion = NonNullable<StreamParams["tools"]>[number];
+
 let _client: AnthropicFoundry | null = null;
 
 function getClient(): AnthropicFoundry {
@@ -93,17 +99,26 @@ export async function generateStructuredWithRetry<T>(
 
 /** Stream a chat response. Returns an async iterable of text deltas. */
 export async function generateStream(
-  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  messages: MessageParam[],
   systemPrompt: string,
-  temperature = 0.7,
-  model = DEFAULT_MODEL
+  options?: {
+    tools?: ToolUnion[];
+    temperature?: number;
+    model?: string;
+  }
 ) {
+  const temperature = options?.temperature ?? 0.7;
+  const model = options?.model ?? DEFAULT_MODEL;
+  const tools = options?.tools;
+  const hasTools = tools && tools.length > 0;
+
   const stream = getClient().messages.stream({
     model,
-    max_tokens: 4096,
+    max_tokens: hasTools ? 8192 : 4096,
     temperature,
     system: systemPrompt || undefined,
     messages,
+    ...(hasTools ? { tools } : {}),
   });
 
   return stream;

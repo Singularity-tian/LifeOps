@@ -25,12 +25,14 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
     isStreaming,
     streamingText,
     streamingChoices,
+    activeTools,
     clearStreaming,
   } = useChat(channelId);
 
   const { containerRef, scrollToBottom } = useScrollToBottom([
     messages.length,
     streamingText,
+    activeTools.length,
   ]);
 
   // Track selected choices per message
@@ -56,6 +58,7 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
         role: "user",
         content,
         choices: null,
+        tool_calls: null,
         created_at: new Date().toISOString(),
       };
       addMessage(userMsg);
@@ -75,6 +78,7 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
           role: "assistant",
           content: result.text,
           choices: result.choices ?? null,
+          tool_calls: result.toolCalls ?? null,
           created_at: new Date().toISOString(),
         };
 
@@ -171,12 +175,13 @@ export default function ChatContainer({ channelId }: ChatContainerProps) {
             ))}
 
             {/* Streaming message — stays visible until clearStreaming() */}
-            {(isStreaming || streamingText) && (
+            {(isStreaming || streamingText || activeTools.length > 0) && (
               <StreamingMessage
                 text={streamingText}
                 choices={streamingChoices}
                 isStreaming={isStreaming}
                 onChoiceSelect={handleStreamingChoiceSelect}
+                activeTools={activeTools}
               />
             )}
           </div>
