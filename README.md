@@ -1,4 +1,4 @@
-# Personal Admin
+# LifeOps
 
 An AI-powered personal life management chatbot. Organize your life into channels — fitness, finance, travel, career, anything — then just state your goal. The AI agent breaks it down, asks the right questions, and delivers an actionable plan.
 

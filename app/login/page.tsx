@@ -41,7 +41,7 @@ export default function LoginPage() {
           className="text-[20px] font-semibold mb-1.5"
           style={{ color: "var(--text-primary)" }}
         >
-          Personal Admin
+          LifeOps
         </h1>
         <p
           className="text-[14px] mb-6"

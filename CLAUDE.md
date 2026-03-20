@@ -1,4 +1,4 @@
-# Personal Admin Chatbot
+# LifeOps
 
 AI-powered personal chatbot with Discord-like layout (channels) and Apple-inspired design.
 Choices-first UX: AI asks clarifying questions and presents clickable option cards.

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Personal Admin",
+  title: "LifeOps",
   description: "AI-powered personal assistant with choices-first UX",
 };
 

@@ -37,7 +37,7 @@ export default function Sidebar({
           className="text-[13px] font-semibold tracking-wide uppercase"
           style={{ color: "var(--text-secondary)", letterSpacing: "0.06em" }}
         >
-          Personal Admin
+          LifeOps
         </h1>
       </div>
 

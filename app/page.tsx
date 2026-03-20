@@ -131,7 +131,7 @@ export default function Home() {
               className="text-[15px] font-medium"
               style={{ color: "var(--text-primary)" }}
             >
-              Personal Admin
+              LifeOps
             </p>
             <p
               className="text-[13.5px]"
