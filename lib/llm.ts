@@ -1,67 +1,70 @@
-import { AnthropicFoundry } from "@anthropic-ai/foundry-sdk";
+import OpenAI from "openai";
 import { z } from "zod/v4";
 
-// Re-export SDK types via the client instance
-type Client = AnthropicFoundry;
-type StreamParams = Parameters<Client["messages"]["stream"]>[0];
-export type MessageParam = StreamParams["messages"][number];
-export type ToolUnion = NonNullable<StreamParams["tools"]>[number];
+// Re-export types so callers (route handlers, tools/history.ts) stay decoupled
+// from the underlying SDK surface.
+export type MessageParam = OpenAI.Chat.ChatCompletionMessageParam;
+export type ToolUnion = OpenAI.Chat.ChatCompletionTool;
 
-let _client: AnthropicFoundry | null = null;
+let _client: OpenAI | null = null;
 
-function getClient(): AnthropicFoundry {
+function getClient(): OpenAI {
   if (!_client) {
-    _client = new AnthropicFoundry({
-      apiKey: process.env.ANTHROPIC_FOUNDRY_API_KEY,
-      baseURL: process.env.ANTHROPIC_FOUNDRY_BASE_URL!,
+    _client = new OpenAI({
+      apiKey: process.env.AZURE_API_KEY,
+      baseURL: process.env.AZURE_BASE_URL!,
     });
   }
   return _client;
 }
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = "gpt-5.4";
 
 /** Generate a free-form text response. */
 export async function generate(
   prompt: string,
   systemPrompt = "",
-  temperature = 0.7,
+  _temperature = 0.7,
   model = DEFAULT_MODEL
 ): Promise<string> {
-  const msg = await getClient().messages.create({
+  const messages: MessageParam[] = [];
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: prompt });
+
+  const resp = await getClient().chat.completions.create({
     model,
-    max_tokens: 4096,
-    temperature,
-    system: systemPrompt || undefined,
-    messages: [{ role: "user", content: prompt }],
+    max_completion_tokens: 4096,
+    messages,
   });
-  const block = msg.content[0];
-  return block.type === "text" ? block.text : "";
+  return resp.choices[0]?.message?.content ?? "";
 }
 
 /** Generate a structured JSON response validated against a Zod schema. */
 export async function generateStructured<T>(
   prompt: string,
   schema: z.ZodType<T>,
-  temperature = 0.1,
+  _temperature = 0.1,
   model = DEFAULT_MODEL,
   systemPrompt = ""
 ): Promise<T> {
   const jsonInstruction =
     "\n\nRespond with ONLY valid JSON that matches the requested schema. No markdown, no explanation.";
 
-  const msg = await getClient().messages.create({
+  const resp = await getClient().chat.completions.create({
     model,
-    max_tokens: 2048,
-    temperature,
-    system:
-      (systemPrompt || "You are a precise JSON-generating assistant.") +
-      jsonInstruction,
-    messages: [{ role: "user", content: prompt }],
+    max_completion_tokens: 2048,
+    messages: [
+      {
+        role: "system",
+        content:
+          (systemPrompt || "You are a precise JSON-generating assistant.") +
+          jsonInstruction,
+      },
+      { role: "user", content: prompt },
+    ],
   });
 
-  const block = msg.content[0];
-  const raw = block.type === "text" ? block.text : "{}";
+  const raw = resp.choices[0]?.message?.content ?? "{}";
   const cleaned = raw
     .replace(/^```(?:json)?\n?/, "")
     .replace(/\n?```$/, "")
@@ -97,7 +100,10 @@ export async function generateStructuredWithRetry<T>(
   throw lastError;
 }
 
-/** Stream a chat response. Returns an async iterable of text deltas. */
+/**
+ * Stream a chat response. Returns the raw OpenAI streaming iterable
+ * (yields ChatCompletionChunk values).
+ */
 export async function generateStream(
   messages: MessageParam[],
   systemPrompt: string,
@@ -107,17 +113,19 @@ export async function generateStream(
     model?: string;
   }
 ) {
-  const temperature = options?.temperature ?? 0.7;
   const model = options?.model ?? DEFAULT_MODEL;
   const tools = options?.tools;
   const hasTools = tools && tools.length > 0;
 
-  const stream = getClient().messages.stream({
+  const fullMessages: MessageParam[] = systemPrompt
+    ? [{ role: "system", content: systemPrompt }, ...messages]
+    : messages;
+
+  const stream = await getClient().chat.completions.create({
     model,
-    max_tokens: hasTools ? 8192 : 4096,
-    temperature,
-    system: systemPrompt || undefined,
-    messages,
+    max_completion_tokens: hasTools ? 8192 : 4096,
+    messages: fullMessages,
+    stream: true,
     ...(hasTools ? { tools } : {}),
   });
 

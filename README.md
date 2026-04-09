@@ -49,8 +49,8 @@ cp .env.local.example .env.local
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | Neon Postgres connection string |
-| `ANTHROPIC_FOUNDRY_API_KEY` | Azure Foundry API key |
-| `ANTHROPIC_FOUNDRY_BASE_URL` | Azure Foundry base URL |
+| `AZURE_API_KEY` | Azure OpenAI API key |
+| `AZURE_BASE_URL` | e.g. `https://<resource>.services.ai.azure.com/openai/v1` |
 | `AUTH_SECRET` | NextAuth secret (`openssl rand -base64 32`) |
 | `AUTH_GOOGLE_ID` | Google OAuth client ID |
 | `AUTH_GOOGLE_SECRET` | Google OAuth client secret |

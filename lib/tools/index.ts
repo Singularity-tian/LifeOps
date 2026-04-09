@@ -1,8 +1,8 @@
 import type { ToolUnion } from "../llm";
 
+// Azure OpenAI GPT-5.x does not expose Anthropic's server-side web_search /
+// web_fetch tools. Returning an empty list keeps the plumbing intact; plug in
+// real function-calling tools here when needed.
 export function getDefaultTools(): ToolUnion[] {
-  return [
-    { type: "web_search_20250305", name: "web_search" },
-    { type: "web_fetch_20250910", name: "web_fetch" },
-  ];
+  return [];
 }

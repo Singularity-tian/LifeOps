@@ -9,7 +9,7 @@ import {
 import { getRequiredSession } from "@/lib/auth-utils";
 import { getDefaultTools } from "@/lib/tools";
 import { buildApiMessages } from "@/lib/tools/history";
-import type { StoredToolCall, WebSearchResult } from "@/lib/types";
+import type { StoredToolCall } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +72,6 @@ export async function POST(req: Request) {
         try {
           let fullText = "";
           const toolCalls: StoredToolCall[] = [];
-          let currentToolUse: Partial<StoredToolCall> | null = null;
 
           const messageStream = await generateStream(
             apiMessages,
@@ -80,96 +79,11 @@ export async function POST(req: Request) {
             { tools: getDefaultTools() }
           );
 
-          for await (const event of messageStream) {
-            switch (event.type) {
-              case "content_block_start": {
-                const block = event.content_block;
-
-                // Server tool invocation (web_search, web_fetch)
-                if (block.type === "server_tool_use") {
-                  currentToolUse = {
-                    id: block.id,
-                    name: block.name,
-                    input: block.input,
-                  };
-                  sendSSE({
-                    type: "tool_use_start",
-                    name: block.name,
-                    id: block.id,
-                  });
-                }
-
-                // Web search results
-                if (block.type === "web_search_tool_result") {
-                  const results: WebSearchResult[] = Array.isArray(block.content)
-                    ? block.content
-                        .filter((r): r is { type: "web_search_result"; title: string; url: string; page_age: string | null; encrypted_content: string } =>
-                          r.type === "web_search_result"
-                        )
-                        .map((r) => ({
-                          title: r.title,
-                          url: r.url,
-                          page_age: r.page_age,
-                          encrypted_content: r.encrypted_content,
-                        }))
-                    : [];
-
-                  if (currentToolUse) {
-                    currentToolUse.results = results;
-                    toolCalls.push(currentToolUse as StoredToolCall);
-                    currentToolUse = null;
-                  }
-
-                  // Send results to frontend (without encrypted_content)
-                  sendSSE({
-                    type: "tool_result",
-                    tool_use_id: block.tool_use_id,
-                    name: "web_search",
-                    results: results.map((r) => ({
-                      title: r.title,
-                      url: r.url,
-                      page_age: r.page_age,
-                    })),
-                  });
-                }
-
-                // Web fetch results
-                if (block.type === "web_fetch_tool_result") {
-                  const fetchContent = block.content;
-                  const isError = fetchContent.type === "web_fetch_tool_result_error";
-
-                  if (currentToolUse) {
-                    if (isError) {
-                      currentToolUse.error = fetchContent.error_code;
-                    } else {
-                      currentToolUse.results = {
-                        url: fetchContent.url,
-                        page_title: fetchContent.url,
-                      };
-                    }
-                    toolCalls.push(currentToolUse as StoredToolCall);
-                    currentToolUse = null;
-                  }
-
-                  sendSSE({
-                    type: "tool_result",
-                    tool_use_id: block.tool_use_id,
-                    name: "web_fetch",
-                    results: isError
-                      ? { error: fetchContent.error_code }
-                      : { url: fetchContent.url },
-                  });
-                }
-                break;
-              }
-
-              case "content_block_delta": {
-                if (event.delta.type === "text_delta") {
-                  fullText += event.delta.text;
-                  sendSSE({ type: "delta", text: event.delta.text });
-                }
-                break;
-              }
+          for await (const chunk of messageStream) {
+            const delta = chunk.choices[0]?.delta?.content;
+            if (delta) {
+              fullText += delta;
+              sendSSE({ type: "delta", text: delta });
             }
           }
 
@@ -189,19 +103,9 @@ export async function POST(req: Request) {
             toolCalls.length > 0 ? toolCalls : undefined
           );
 
-          // Send tool_calls to frontend for persisted message
+          // Tool-call surface is preserved for future function-calling support.
           if (toolCalls.length > 0) {
-            // Strip encrypted_content before sending to client
-            const clientToolCalls = toolCalls.map((tc) => ({
-              ...tc,
-              results: Array.isArray(tc.results)
-                ? tc.results.map((r) => {
-                    const { encrypted_content: _, ...rest } = r as WebSearchResult;
-                    return rest;
-                  })
-                : tc.results,
-            }));
-            sendSSE({ type: "tool_calls", toolCalls: clientToolCalls });
+            sendSSE({ type: "tool_calls", toolCalls });
           }
 
           // Send choices event
