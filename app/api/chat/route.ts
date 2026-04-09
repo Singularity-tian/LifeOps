@@ -73,14 +73,13 @@ export async function POST(req: Request) {
           let fullText = "";
           const toolCalls: StoredToolCall[] = [];
 
-          const messageStream = await generateStream(
+          const messageStream = generateStream(
             apiMessages,
             systemPrompt,
             { tools: getDefaultTools() }
           );
 
-          for await (const chunk of messageStream) {
-            const delta = chunk.choices[0]?.delta?.content;
+          for await (const delta of messageStream) {
             if (delta) {
               fullText += delta;
               sendSSE({ type: "delta", text: delta });

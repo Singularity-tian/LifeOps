@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 // Re-export types so callers (route handlers, tools/history.ts) stay decoupled
 // from the underlying SDK surface.
 export type MessageParam = OpenAI.Chat.ChatCompletionMessageParam;
-export type ToolUnion = OpenAI.Chat.ChatCompletionTool;
+export type ToolUnion = OpenAI.Responses.Tool;
 
 let _client: OpenAI | null = null;
 
@@ -101,10 +101,10 @@ export async function generateStructuredWithRetry<T>(
 }
 
 /**
- * Stream a chat response. Returns the raw OpenAI streaming iterable
- * (yields ChatCompletionChunk values).
+ * Stream a chat response via the Responses API (required for server-side
+ * tools like web_search_preview). Yields plain text deltas.
  */
-export async function generateStream(
+export async function* generateStream(
   messages: MessageParam[],
   systemPrompt: string,
   options?: {
@@ -112,24 +112,33 @@ export async function generateStream(
     temperature?: number;
     model?: string;
   }
-) {
+): AsyncGenerator<string, void, unknown> {
   const model = options?.model ?? DEFAULT_MODEL;
   const tools = options?.tools;
   const hasTools = tools && tools.length > 0;
 
-  const fullMessages: MessageParam[] = systemPrompt
-    ? [{ role: "system", content: systemPrompt }, ...messages]
-    : messages;
+  // Responses API accepts { role, content } items where content is a string.
+  const input = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: typeof m.content === "string" ? m.content : "",
+    }));
 
-  const stream = await getClient().chat.completions.create({
+  const stream = await getClient().responses.create({
     model,
-    max_completion_tokens: hasTools ? 8192 : 4096,
-    messages: fullMessages,
+    instructions: systemPrompt || undefined,
+    input,
+    max_output_tokens: hasTools ? 8192 : 4096,
     stream: true,
     ...(hasTools ? { tools } : {}),
   });
 
-  return stream;
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") {
+      yield event.delta;
+    }
+  }
 }
 
 function sleep(ms: number) {
